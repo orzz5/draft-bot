@@ -7,6 +7,16 @@ module.exports = {
   ownerId: '667791939453583373',
   trialHighPlayerRoleId: '1542878277474193649',
 
+  apiPort: Number(process.env.API_PORT || process.env.PORT || 8080),
+  apiKey: process.env.BOT_API_KEY || '',
+
+  // GitHub Gist relay — the bot pushes its live payload to a public gist that
+  // the Vercel dashboard reads (DisCloud free plan cannot expose ports).
+  gistToken: process.env.GIST_TOKEN || '',
+  gistId: process.env.GIST_ID || '',
+  gistPushIntervalMs: Number(process.env.GIST_PUSH_INTERVAL || 15000),
+  gistMinIntervalMs: Math.max(5000, Number(process.env.GIST_MIN_INTERVAL || 30000)),
+
   highDrafterRoleId: '1541972950964510801',
   lowerDrafterRoleId: '1541972950268387408',
   highVoteRoleId: '1544442806595092490',

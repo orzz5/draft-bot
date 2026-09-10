@@ -140,6 +140,20 @@ module.exports = {
         .setDescription('Set a player\'s win count (Admin only)')
         .addUserOption(opt => opt.setName('player').setDescription('The player to edit').setRequired(true))
         .addIntegerOption(opt => opt.setName('wins').setDescription('New win count').setRequired(true).setMinValue(0))
+        .addStringOption(opt => opt.setName('draft-type')
+          .setDescription('Which draft type the wins count applies to (default: Overall)')
+          .setRequired(false)
+          .addChoices(
+            { name: 'Overall', value: 'overall' },
+            { name: 'Higher', value: 'higher' },
+            { name: 'Mixed', value: 'mixed' },
+            { name: 'Lower', value: 'lower' }
+          ))
+    )
+    .addSubcommand(sub =>
+      sub.setName('link')
+        .setDescription('Link your Roblox account to show your avatar on the leaderboard (once)')
+        .addStringOption(opt => opt.setName('user').setDescription('Your Roblox username').setRequired(true))
     ),
 
   async execute(interaction) {
@@ -169,6 +183,7 @@ module.exports = {
     if (sub === 'reset-votations') return handleResetVotations(interaction);
     if (sub === 'stats') return handleStats(interaction);
     if (sub === 'edit-stats') return handleEditStats(interaction);
+    if (sub === 'link') return handleLink(interaction);
   },
 
   startPickingPhase,
@@ -1489,7 +1504,8 @@ async function handleStats(interaction) {
     .addFields(
       { name: '🏆 Wins', value: `**${stats.wins}**`, inline: true },
       { name: '🎮 Matches Played', value: `**${stats.matchesPlayed}**`, inline: true },
-      { name: '📦 Drafts Joined', value: `**${stats.draftsJoined}**`, inline: true }
+      { name: '📦 Drafts Joined', value: `**${stats.draftsJoined}**`, inline: true },
+      { name: '🏆 Wins by type', value: `Higher **${stats.winsByType.higher}** · Mixed **${stats.winsByType.mixed}** · Lower **${stats.winsByType.lower}**`, inline: false }
     )
     .setFooter({ text: `Player ID: ${target.id}` })
     .setTimestamp();
@@ -1504,12 +1520,15 @@ async function handleEditStats(interaction) {
 
   const target = interaction.options.getUser('player');
   const newWins = interaction.options.getInteger('wins');
+  const draftTypeRaw = interaction.options.getString('draft-type') || 'overall';
+  const draftType = ['lower', 'mixed', 'higher'].includes(draftTypeRaw) ? draftTypeRaw : 'overall';
 
   const { editWins } = require('../utils/stats');
-  const { before, after } = editWins(target.id, newWins);
+  const { before, after } = editWins(target.id, newWins, draftType);
+  const typeLabel = draftType === 'overall' ? 'overall wins' : `/draft type: ${draftType}`;
 
   await interaction.reply({
-    embeds: [successEmbed(`✏️ Updated **${target.username}**'s wins: **${before}** → **${after}**`)],
+    embeds: [successEmbed(`✏️ Updated **${target.username}**'s ${typeLabel}: **${before}** → **${after}**`)],
     flags: MessageFlags.Ephemeral
   });
 
@@ -1520,7 +1539,7 @@ async function handleEditStats(interaction) {
     .addFields(
       { name: '👤 Edited by', value: `${interaction.user} (\`@${interaction.user.username}\`)`, inline: true },
       { name: '🎯 Player edited', value: `${target} (\`@${target.username}\`)`, inline: true },
-      { name: '⚖️ Wins', value: `**${before}** → **${after}**`, inline: false }
+      { name: `⚖️ ${draftType === 'overall' ? 'Overall wins' : draftType + ' wins'}`, value: `**${before}** → **${after}**`, inline: false }
     )
     .setFooter({ text: `Player ID: ${target.id}` })
     .setTimestamp();
@@ -1538,15 +1557,66 @@ async function handleEditStats(interaction) {
           .setColor(config.colors.warning)
           .setTitle('✏️ Player stats edited')
           .setDescription(
-            `${interaction.user} (\`@${interaction.user.username}\`) edited ${target}'s (\`@${target.username}\`) wins.\n\n**Before:** ${before}\n**After:** ${after}`
+            `${interaction.user} (\`@${interaction.user.username}\`) edited ${target}'s (\`@${target.username}\`) ${draftType} wins.\n\n**Before:** ${before}\n**After:** ${after}`
           )
           .setTimestamp()
       ]
     }).catch(() => {});
   }
 
-  await logStaffAction(interaction.guild, interaction.user, `Edited **${target.username}**'s wins from **${before}** to **${after}**`, [
+  await logStaffAction(interaction.guild, interaction.user, `Edited **${target.username}**'s ${draftType} wins from **${before}** to **${after}**`, [
     { name: '🎯 Player', value: `${target} (\`@${target.username}\`)`, inline: true },
     { name: '⚖️ Wins', value: `${before} → **${after}**`, inline: true }
+  ]);
+}
+
+async function handleLink(interaction) {
+  const username = (interaction.options.getString('user') || '').trim();
+  const { getLink, setLink } = require('../state/links');
+  const { resolveRobloxUsername } = require('../utils/roblox');
+
+  if (!username) {
+    return interaction.reply({ embeds: [errorEmbed('You must provide your Roblox username.')], flags: MessageFlags.Ephemeral });
+  }
+
+  const existing = getLink(interaction.user.id);
+  if (existing) {
+    return interaction.reply({
+      embeds: [errorEmbed(
+        `You already linked your Roblox account **${existing.username}**. Open a ticket if you need to change your username.`
+      )],
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  let resolved;
+  try {
+    resolved = await resolveRobloxUsername(username);
+  } catch (e) {
+    console.warn('[draft link] Roblox API unreachable:', e.message);
+    return interaction.editReply({ embeds: [errorEmbed('Could not reach the Roblox API right now. Try again in a few minutes.')] });
+  }
+
+  if (!resolved) {
+    return interaction.editReply({ embeds: [errorEmbed(`No Roblox account named **${username}** was found. Double-check the spelling.`)] });
+  }
+
+  setLink({
+    discordId: interaction.user.id,
+    username: resolved.username,
+    robloxId: resolved.robloxId,
+    displayName: resolved.displayName,
+    avatarUrl: resolved.avatarUrl
+  });
+
+  await interaction.editReply({
+    embeds: [successEmbed(`✅ Roblox account **${resolved.username}** linked. Your avatar will show on the leaderboard shortly.`)]
+  });
+
+  await logStaffAction(interaction.guild, interaction.user, `🔗 Linked their Roblox account **${resolved.username}** (\`${resolved.robloxId}\`)`, [
+    { name: '👤 User', value: `${interaction.user} (\`@${interaction.user.username}\`)`, inline: true },
+    { name: '🦾 Roblox', value: `\`${resolved.username}\` · id \`${resolved.robloxId}\``, inline: true }
   ]);
 }

@@ -72,6 +72,12 @@ client.once('clientReady', () => {
   const { loadVotationsFromDisk, persistVotations } = require('./state/votations');
   loadVotationsFromDisk();
 
+  const { loadLinksFromDisk, persistLinks } = require('./state/links');
+  loadLinksFromDisk();
+
+  const { startApiServer } = require('./httpApi');
+  startApiServer(client);
+
   const { setClient: setTrialClient, loadTrialMembersFromDisk, rescheduleAllTrials } = require('./state/trialReviews');
   setTrialClient(client);
   loadTrialMembersFromDisk();
@@ -86,11 +92,15 @@ client.once('clientReady', () => {
     }
   }
 
+  const { startGistPusher } = require('./pushGist');
+  startGistPusher();
+
   setInterval(() => {
     persistDrafts();
     const { persistTournaments } = require('./state/tournaments');
     persistTournaments();
     persistVotations();
+    persistLinks();
   }, 30000);
 });
 
