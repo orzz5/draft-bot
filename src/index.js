@@ -3,6 +3,17 @@ process.on('warning', (w) => {
   console.warn(w);
 });
 
+const { closeDatabase } = require('./utils/db');
+
+function gracefulShutdown() {
+  console.log('Shutting down, closing database...');
+  try { closeDatabase(); } catch {}
+  process.exit(0);
+}
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
+process.on('exit', () => { try { closeDatabase(); } catch {} });
+
 const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js');
 const fs = require('fs');
 const path = require('path');

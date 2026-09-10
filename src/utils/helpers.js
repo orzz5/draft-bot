@@ -1,44 +1,31 @@
 const { PermissionFlagsBits } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
 const config = require('../config');
+const { loadDatabase, saveDatabase } = require('../state/persistence');
 
-const DATA_DIR = path.join(__dirname, '..', '..', 'data');
-const SETUP_FILE = path.join(DATA_DIR, 'setup.json');
+let setupCache = null;
 
 function loadSetupData() {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    if (fs.existsSync(SETUP_FILE)) {
-      const data = fs.readFileSync(SETUP_FILE, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error('Error loading setup data:', error);
-  }
-  return {};
+  const data = loadDatabase();
+  return data.setup || {};
 }
 
 function saveSetupData(data) {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(SETUP_FILE, JSON.stringify(data, null, 2));
-  } catch (error) {
-    console.error('Error saving setup data:', error);
-  }
+  const db = loadDatabase();
+  db.setup = data;
+  saveDatabase(db);
 }
 
-let setupCache = loadSetupData();
+function refreshSetupCache() {
+  setupCache = loadSetupData();
+}
 
 function getSetup(guildId) {
+  if (!setupCache) refreshSetupCache();
   return setupCache[guildId] || null;
 }
 
 function saveSetup(guildId, data) {
+  if (!setupCache) refreshSetupCache();
   setupCache[guildId] = data;
   saveSetupData(setupCache);
 }

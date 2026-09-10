@@ -1,5 +1,3 @@
-const fs = require('fs');
-const path = require('path');
 const { loadDatabase, saveDatabase } = require('../state/persistence');
 
 const VERIFICATION_KEY = 'verificationMessages';
